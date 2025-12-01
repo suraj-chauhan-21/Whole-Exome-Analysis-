@@ -13,8 +13,8 @@ The human genome consists of approximately 3 billion base pairs, but only ~1-2% 
 
 The exome makes up only about 1% to 2% of the whole genome.
 
-**
-Why do we need it? (The Advantages) If we can sequence the whole genome (WGS), why bother with just the exome?**
+
+Why do we need it? (The Advantages) If we can sequence the whole genome (WGS), why bother with just the exome?
 
 
 **Clinical Relevance**: About 85% of known disease-causing mutations occur in the exome. If you are looking for a genetic cause of a disease (like cancer or a hereditary disorder), the answer is almost certainly in the exome.
