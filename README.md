@@ -341,7 +341,7 @@ awk 'NR==8 {print ($3-$7)/$3}' metrics/SRR22317682.library_complexity.txt
 
 ```
 
-## 📌 Coverage & Depth Summary
+## Coverage & Depth Summary
 
 
 | Sample         | Covered Bases (≥1×) | Average Depth |
@@ -361,7 +361,7 @@ Subsample retains most target regions; depth matches expected coverage reduction
 ---
 
 
-## 📌 Library Complexity & ROI Summary
+##  Library Complexity & ROI Summary
 
 
 | Sample         | Read Pairs Examined | Duplicates | % Duplication | Estimated Library Size | ROI    |
@@ -384,7 +384,7 @@ Subsample retains most target regions; depth matches expected coverage reduction
 ---
 
 
-## 📌 Original Picard Complexity Output 
+## Original Picard Complexity Output 
 
 
 ### **Original Sample**
