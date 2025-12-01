@@ -427,3 +427,46 @@ PercentDuplication   = 0.000478
 * Real WES quality checks commonly include **10×, 20×, 30×, 50×, 100×** depth summaries.
 
 I am planning to add this in on my Github can you first explain the what is Whole exome analysis, why even we need this 
+
+
+graph TD
+    %% Define Styles
+    classDef input fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef process fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef qc fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef output fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+
+    %% --- Section 1: Data Prep ---
+    subgraph "1. Data Preparation"
+        SRA[("SRA Database<br/>(SRR22317682)")]:::input -->|prefetch| SRA_File[SRA File]
+        SRA_File -->|fasterq-dump| FASTQ[("Raw Reads<br/>(FASTQ)")]:::input
+        
+        Ref[("Ref Genome<br/>(GRCh38)")]:::input -->|bwa index| Index[Genome Index]
+    end
+
+    %% --- Section 2: Alignment ---
+    subgraph "2. Alignment"
+        FASTQ & Index -->|bwa mem| SAM[Raw Alignment]
+        SAM -->|samtools view/sort| BAM[("Sorted BAM")]:::output
+    end
+
+    %% --- Section 3: QC & Cleanup ---
+    subgraph "3. Quality Control & Processing"
+        BAM -->|picard MarkDuplicates| Dedup[("Dedup BAM")]:::output
+        
+        %% QC Branches
+        Dedup -.->|samtools depth| Depth[("Coverage Depth<br/>(Targeted)")]:::qc
+        Dedup -.->|picard InsertSize| Insert[("Insert Size<br/>Metrics")]:::qc
+        Dedup -.->|picard Complexity| ROI[("Library ROI<br/>Metrics")]:::qc
+    end
+
+    %% --- Section 4: Variant Discovery ---
+    subgraph "4. Variant Discovery"
+        Dedup -->|GATK BQSR| Recal[("Recalibrated BAM")]:::output
+        Recal -->|GATK HaplotypeCaller| VCF[("Raw VCF")]:::output
+        VCF -->|GATK VariantFiltration| CleanVCF[("Filtered VCF")]:::output
+        CleanVCF -->|SnpEff| Final[("Annotated VCF<br/>(Final Output)")]:::output
+    end
+
+    %% Connect Sections
+    Data_Prep --> Alignment
