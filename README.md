@@ -8,6 +8,9 @@ The human genome consists of approximately 3 billion base pairs, but only ~1-2% 
 
     The Exome: The specific part of the genome formed by Exons (the coding regions). These are the parts of the DNA that actually get translated into proteins.
 
+   <img width="532" height="673" alt="image" src="https://github.com/user-attachments/assets/d3fadd7d-03c5-4795-8060-a8e504dd4a43" />
+
+
 The exome makes up only about 1% to 2% of the whole genome.
 
 **
