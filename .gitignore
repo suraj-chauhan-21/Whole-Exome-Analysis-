@@ -1,0 +1,84 @@
+# =============================================================================
+# .gitignore — WES Pipeline
+# =============================================================================
+
+# ── Large sequencing data files (never commit these) ─────────────────────────
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.sra
+*.sra.cache
+
+# ── Alignment files ───────────────────────────────────────────────────────────
+*.bam
+*.bai
+*.cram
+*.crai
+
+# ── Variant call files ────────────────────────────────────────────────────────
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.gvcf
+*.gvcf.gz
+*.gvcf.gz.tbi
+*.g.vcf.gz
+*.g.vcf.gz.tbi
+
+# ── Reference genome files ────────────────────────────────────────────────────
+*.fa
+*.fna
+*.fasta
+*.fa.fai
+*.fna.fai
+*.fasta.fai
+*.fa.amb
+*.fa.ann
+*.fa.bwt
+*.fa.pac
+*.fa.sa
+*.dict
+
+# ── Pipeline output directories ───────────────────────────────────────────────
+results/
+test_results/
+data/
+
+# Keep directory structure placeholders
+!results/.gitkeep
+!data/.gitkeep
+!test_results/.gitkeep
+
+# ── Conda / Snakemake ─────────────────────────────────────────────────────────
+.snakemake/
+.conda/
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Log files (keep directory, not files) ─────────────────────────────────────
+logs/*.log
+logs/**/*.log
+!logs/.gitkeep
+
+# ── Picard / GATK temporary files ────────────────────────────────────────────
+*.tmp
+*.tmp.bam
+
+# ── MultiQC ──────────────────────────────────────────────────────────────────
+multiqc_data/
+
+# ── Downloaded archives ───────────────────────────────────────────────────────
+*.zip
+ncbi_dataset/
+
+# ── macOS / editors ──────────────────────────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# ── Jupyter notebooks output (if used for exploration) ───────────────────────
+.ipynb_checkpoints/
