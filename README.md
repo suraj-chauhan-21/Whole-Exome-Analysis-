@@ -1,435 +1,291 @@
-# Whole-Exome-Analysis-
-The human genome consists of approximately 3 billion base pairs, but only ~1-2% of this DNA codes for proteins. This coding region is known as the Exome.  Whole Exome Sequencing is a targeted sequencing strategy that focuses exclusively on these protein-coding regions.
+# Whole-Exome Sequencing (WES) Analysis Pipeline
 
-
-1. The Genome vs. The Exome
-
-    The Genome: The entire human DNA sequence (approx. 3 billion base pairs). It contains everything: genes, regulatory sequences, and a vast amount of non-coding DNA (often called "junk DNA," though it does have functions).
-
-    The Exome: The specific part of the genome formed by Exons (the coding regions). These are the parts of the DNA that actually get translated into proteins.
-
-   <img width="532" height="673" alt="image" src="https://github.com/user-attachments/assets/d3fadd7d-03c5-4795-8060-a8e504dd4a43" />
-
-
-The exome makes up only about 1% to 2% of the whole genome.
-
-
-Why do we need it? (The Advantages) If we can sequence the whole genome (WGS), why bother with just the exome?
-
-
-**Clinical Relevance**: About 85% of known disease-causing mutations occur in the exome. If you are looking for a genetic cause of a disease (like cancer or a hereditary disorder), the answer is almost certainly in the exome.
-
-**Cost Efficiency**: Sequencing 1% of the genome is significantly cheaper than sequencing 100% of it.
-
-**Higher Depth (Accuracy):** Because you are sequencing a smaller target, you can sequence it "deeper" (more times) for the same cost.
-
-Example: For $500, you might get 30× coverage on a Whole Genome, or 100× coverage on an Exome. Higher coverage means you can be much more confident that a mutation you found is real and not a machine error.
-
-**Data Management**: WGS files are massive (hundreds of Gigabytes). WES files are smaller and easier to store and analyze on standard computers.
-
-
-
-
-
-
-# **Whole Exome Sequencing (WES) Analysis – SRR22317682**
-
-
-Short, clean workflow containing only essential commands + brief purpose notes.
-
-*Note: 
-
-“10× depth” below is only an example. Real QC usually evaluates **10×, 20×, 30×, 50×, 100×**, etc.*
-
-> Due to the large size of sequencing and alignment files (FASTQ, BAM, reference genomes), only the pipeline structure, code, and essential README documentation are uploaded here.  
-
-> The full dataset and output files are stored locally and can be provided upon request.
+A reproducible, end-to-end pipeline for Whole-Exome Sequencing analysis, from raw SRA reads through aligned BAM, base recalibration, variant calling, filtering, and functional annotation.
 
 ---
 
-<img width="833" height="657" alt="image" src="https://github.com/user-attachments/assets/5320e32d-39f9-42fb-80fd-9a740a6afcf4" />
+## Background
 
+The human genome contains approximately 3 billion base pairs, but only ~1–2% of that DNA encodes proteins. This coding region — the **exome** — is where ~85% of known disease-causing mutations occur. Whole-Exome Sequencing (WES) captures and sequences only these protein-coding regions, giving:
 
+- **Clinical relevance**: Most pathogenic variants are in coding regions
+- **Cost efficiency**: Sequencing ~1% of the genome at significantly lower cost
+- **Higher depth**: For the same budget, WES achieves 100× coverage vs ~30× for WGS
+- **Manageable data size**: WES files are far smaller than whole-genome data
 
-## **1. Download SRA Data**
-
-
-> **Purpose:** Obtain raw FASTQ reads for WES sample SRR22317682.
-
-
-```bash
-
-apt install sra-toolkit
-
-
-mkdir -p data && cd data
-
-prefetch -O ./ --progress SRR22317682
-
-fasterq-dump SRR22317682.sra --split-files --threads 4
-
-```
-
+This pipeline implements **GATK Best Practices** for germline short variant discovery on GRCh38.
 
 ---
 
-
-## **2. Download Reference Genome (GRCh38)**
-
-
-> **Purpose:** Required for alignment and downstream analysis.
-
-
-```bash
-
-conda create -n ncbi_datasets
-
-conda activate ncbi_datasets
-
-conda install -c conda-forge ncbi-datasets-cli
-
-
-mkdir HG38 && cd HG38
-
-datasets download genome accession GCF_000001405.40 --include genome,gff3 --filename human_GRCh38.zip
-
-unzip human_GRCh38.zip
+## Pipeline Overview
 
 ```
-
+Raw FASTQ (SRA)
+    │
+    ▼
+Pre-alignment QC        ← FastQC + MultiQC
+    │
+    ▼
+Adapter trimming        ← fastp
+    │
+    ▼
+Post-trim QC            ← FastQC + MultiQC
+    │
+    ▼
+Alignment               ← BWA-MEM → sorted BAM
+    │
+    ▼
+Mark Duplicates         ← Picard MarkDuplicates
+    │
+    ▼
+Base Recalibration      ← GATK BQSR (BaseRecalibrator + ApplyBQSR)
+    │
+    ▼
+Coverage & QC           ← samtools depth, flagstat, CollectHsMetrics
+    │
+    ▼
+Variant Calling         ← GATK HaplotypeCaller → GVCF
+    │
+    ▼
+Genotyping              ← GATK GenotypeGVCFs → raw VCF
+    │
+    ▼
+Variant Filtering       ← Hard-filter SNPs & INDELs → filtered VCF
+    │
+    ▼
+Variant Annotation      ← Ensembl VEP → annotated VCF
+    │
+    ▼
+Checksums               ← MD5 for all key outputs
+```
 
 ---
 
-
-## **3. Index Reference**
-
-
-> **Purpose:** Enable alignment and fast genomic coordinate lookup.
-
-
-```bash
-
-conda activate ngs1
-
-
-bwa index ncbi_dataset/data/GCF_000001405.40/GCF_000001405.40_GRCh38.p14_genomic.fna
-
-samtools faidx ncbi_dataset/data/GCF_000001405.40/GCF_000001405.40_GRCh38.p14_genomic.fna
+## Repository Structure
 
 ```
-
+Whole-Exome-Analysis/
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # GitHub Actions CI (lint, dry-run, integration test)
+├── config/
+│   └── config.yaml             # All parameters: paths, threads, tool settings
+├── envs/
+│   └── environment.yml         # Pinned conda environment with all tool versions
+├── workflow/
+│   └── Snakefile               # Snakemake pipeline rules (11 steps, 13 rules)
+├── scripts/
+│   ├── fix_bed_chr_names.awk   # Rename NCBI chr names to UCSC style in BED files
+│   ├── coverage_summary.py     # Multi-threshold coverage report generator
+│   └── prepare_test_data.sh    # Download chr20 subset for CI/testing
+├── test_data/
+│   ├── config_test.yaml        # Test config pointing at chr20 subset
+│   ├── reads/                  # test_1.fastq.gz, test_2.fastq.gz (chr20 subset)
+│   ├── ref/                    # chr20.fa + indices
+│   └── bed/                    # chr20_capture.bed
+├── resources/                  # (gitignored large files — download separately)
+│   ├── GRCh38/                 # Reference FASTA + indices
+│   ├── beds/                   # Capture BED files
+│   └── known_sites/            # dbSNP, Mills, 1000G VCFs for BQSR
+├── results/                    # (gitignored) Pipeline outputs
+├── logs/                       # (gitignored) Per-rule log files
+├── Dockerfile                  # Container for fully reproducible runs
+├── .gitignore
+└── README.md
+```
 
 ---
 
+## Prerequisites
 
-## **4. Alignment with BWA-MEM**
-
-
-> **Purpose:** Map reads to the human genome and produce sorted BAM.
-
-
-```bash
-
-REF="HG38/ncbi_dataset/data/GCF_000001405.40/GCF_000001405.40_GRCh38.p14_genomic.fna"
-
-RUN="SRR22317682"
-
-R1="data/${RUN}/${RUN}_1.fastq"
-
-R2="data/${RUN}/${RUN}_2.fastq"
-
-mkdir -p aligned
-
-OUT="aligned/${RUN}.sorted.bam"
-
-
-RG="@RG\tID:${RUN}\tSM:${RUN}_WES\tPL:ILLUMINA\tLB:WES_Lib\tPU:NovaSeq"
-
-
-bwa mem -t 8 -M -R "$RG" "$REF" "$R1" "$R2" \
-
-  | samtools view -Sb - \
-
-  | samtools sort -o "$OUT"
-
-
-samtools index "$OUT"
-
-```
-
+- [Conda / Mamba](https://github.com/conda-forge/miniforge) (recommended: Mambaforge)
+- [Snakemake ≥ 8.0](https://snakemake.readthedocs.io/)
+- Docker (optional, for container-based runs)
 
 ---
 
+## Quick Start
 
-## **5. Coverage Calculation Using BED File**
-
-
-> **Why BED file is used?**
-
-> A BED file defines **only the target exome regions** (Agilent V6).
-
-> Coverage should be calculated *only* in these captured regions, not the whole genome.
-
-
-### **Fix BED chromosome names (if needed)**
-
+### 1. Clone the repository
 
 ```bash
-
-awk 'NR==FNR{a[$1]=$2;next}{if($1 in a)$1=a[$1];print}' \
-
-  HG38/chr_map.txt \
-
-  HG38/Exome-Agilent_V6.bed \
-
-  > HG38/Exome-Agilent_V6_fixed.bed
-
+git clone https://github.com/suraj-chauhan-21/Whole-Exome-Analysis-.git
+cd Whole-Exome-Analysis-
 ```
 
-
-### **Calculate depth**
-
+### 2. Create the conda environment
 
 ```bash
-
-mkdir -p metrics
-
-
-samtools depth -b HG38/Exome-Agilent_V6_fixed.bed \
-
-  aligned/SRR22317682.sorted.bam > metrics/depth.txt
-
-
-# Covered bases (≥1×)
-
-awk '$3>=1' metrics/depth.txt | wc -l
-
-
-# Average depth
-
-awk '$3>=1 {sum+=$3; n++} END {print sum/n}' metrics/depth.txt
-
+mamba env create -f envs/environment.yml
+conda activate wes-pipeline
 ```
 
+### 3. Download reference resources
+
+```bash
+# Reference genome (GRCh38)
+mkdir -p resources/GRCh38
+datasets download genome accession GCF_000001405.40 \
+    --include genome,gff3 --filename resources/GRCh38/human_GRCh38.zip
+unzip resources/GRCh38/human_GRCh38.zip -d resources/GRCh38/
+
+# Index the reference
+bwa index resources/GRCh38/GRCh38.p14.fa
+samtools faidx resources/GRCh38/GRCh38.p14.fa
+gatk CreateSequenceDictionary -R resources/GRCh38/GRCh38.p14.fa
+
+# GATK resource bundle (known variant sites for BQSR)
+# Download from: https://console.cloud.google.com/storage/browser/genomics-public-data/resources/broad/hg38/v0
+mkdir -p resources/known_sites
+# Place dbsnp_146.hg38.vcf.gz, Mills_and_1000G_gold_standard.indels.hg38.vcf.gz,
+# and Homo_sapiens_assembly38.known_indels.vcf.gz into resources/known_sites/
+```
+
+### 4. Set up capture BED file
+
+```bash
+# Download Agilent SureSelect V6 BED from:
+# https://earray.chem.agilent.com/suredesign/
+mkdir -p resources/beds
+
+# Fix chromosome names (NCBI → UCSC format)
+awk -f scripts/fix_bed_chr_names.awk \
+    resources/beds/chr_map.txt \
+    resources/beds/Agilent_SureSelect_V6.bed \
+    > resources/beds/Agilent_SureSelect_V6_chr_fixed.bed
+```
+
+### 5. Edit the config
+
+Open `config/config.yaml` and update:
+- `samples`: your SRA accession IDs
+- `reference.fasta`: path to your GRCh38 FASTA
+- `capture_bed_fixed`: path to your fixed BED file
+- `known_sites.*`: paths to BQSR VCFs
+- `threads.*` and `memory.picard_jvm` to match your machine
+
+### 6. Run the pipeline
+
+```bash
+# Dry-run first (no jobs executed)
+snakemake --cores 8 --use-conda --dry-run
+
+# Full run
+snakemake --cores 8 --use-conda
+
+# On a cluster (SLURM example)
+snakemake --cores 8 --use-conda \
+    --executor cluster-generic \
+    --cluster-generic-submit-cmd "sbatch --mem=32G --cpus-per-task={threads}"
+```
 
 ---
 
+## Running Tests (chr20 subset)
 
-## **6. Downsample to ~10× (Example Only)**
-
-
-> **Purpose:** Demonstrate how depth affects QC (10× is only an educational example).
-
+A small chr20 test dataset is included for quick validation:
 
 ```bash
+# Prepare test data (one-time setup, ~5 min)
+bash scripts/prepare_test_data.sh
 
-samtools view -s 123.0813 -b aligned/SRR22317682.sorted.bam \
+# Run pipeline on test data
+snakemake --snakefile workflow/Snakefile \
+          --configfile test_data/config_test.yaml \
+          --cores 4 --use-conda
 
-  -o aligned/SRR22317682.subsampled.bam
-
-samtools index aligned/SRR22317682.subsampled.bam
-
-
-samtools depth -b HG38/Exome-Agilent_V6_fixed.bed \
-
-  aligned/SRR22317682.subsampled.bam > metrics/depth_subsampled.txt
-
+# Expected outputs in test_results/
+ls test_results/metrics/
 ```
-
 
 ---
 
-
-## **7. Mark Duplicates (Picard)**
-
-
-> **Purpose:** Remove PCR duplicates for accurate coverage & variant calling.
-
+## Running with Docker
 
 ```bash
+# Build the image
+docker build -t wes-pipeline:1.0 .
 
-conda install -c bioconda picard java-jdk=8.0.112
+# Dry-run
+docker run --rm \
+    -v $(pwd):/workspace -w /workspace \
+    wes-pipeline:1.0 \
+    snakemake --cores 4 --dry-run --configfile test_data/config_test.yaml
 
-
-picard MarkDuplicates \
-
-  I=aligned/SRR22317682.sorted.bam \
-
-  O=aligned/SRR22317682.dedup.bam \
-
-  M=metrics/SRR22317682.dedup_metrics.txt \
-
-  CREATE_INDEX=true
-
+# Full run
+docker run --rm \
+    -v $(pwd):/workspace -w /workspace \
+    wes-pipeline:1.0 \
+    snakemake --cores 8
 ```
-
-
-### **Subsampled BAM**
-
-
-```bash
-
-picard MarkDuplicates \
-
-  I=aligned/SRR22317682.subsampled.bam \
-
-  O=aligned/SRR22317682.sub.dedup.bam \
-
-  M=metrics/SRR22317682.sub.dedup_metrics.txt \
-
-  CREATE_INDEX=true
-
-```
-
 
 ---
 
+## Key Outputs
 
-## **8. Insert Size Metrics**
-
-
-> **Purpose:** Evaluate library preparation and fragment size distribution.
-
-
-```bash
-
-picard CollectInsertSizeMetrics \
-
-  I=aligned/SRR22317682.dedup.bam \
-
-  O=metrics/SRR22317682.insert_metrics.txt \
-
-  H=metrics/SRR22317682.insert_hist.pdf
-
-```
-
+| File | Description |
+|------|-------------|
+| `results/qc/raw_multiqc/multiqc_report.html` | Pre-trim QC summary |
+| `results/qc/trimmed_multiqc/multiqc_report.html` | Post-trim QC summary |
+| `results/aligned/{sample}.dedup.bam` | Deduplicated sorted BAM |
+| `results/bqsr/{sample}.bqsr.bam` | Base-recalibrated BAM |
+| `results/metrics/{sample}.hs_metrics.txt` | WES capture efficiency metrics |
+| `results/metrics/{sample}.coverage_summary.tsv` | Coverage at 1×, 10×, 20×, 30×, 50×, 100× |
+| `results/metrics/{sample}.flagstat.txt` | Alignment rate and read statistics |
+| `results/variants/{sample}.filtered.vcf.gz` | Hard-filtered SNP + INDEL calls |
+| `results/annotated/{sample}.vep.vcf.gz` | VEP-annotated variant calls |
+| `results/metrics/{sample}.md5sums.txt` | Checksums for output verification |
 
 ---
 
+## Tool Versions
 
-## **9. Library Complexity**
+All versions are pinned in `envs/environment.yml`. Key tools:
 
-
-> **Purpose:** Estimate unique molecules vs duplicates.
-
-
-```bash
-
-picard EstimateLibraryComplexity \
-
-  I=aligned/SRR22317682.dedup.bam \
-
-  O=metrics/SRR22317682.library_complexity.txt \
-
-  TMP_DIR=/tmp
-
-```
-
+| Tool | Version | Purpose |
+|------|---------|---------|
+| bwa | 0.7.17 | Read alignment |
+| samtools | 1.19.2 | BAM manipulation |
+| fastp | 0.23.4 | Adapter trimming |
+| fastqc | 0.12.1 | Read QC |
+| multiqc | 1.21 | Aggregate QC report |
+| picard | 3.1.1 | Duplicate marking |
+| gatk4 | 4.5.0.0 | BQSR, variant calling, filtering |
+| ensembl-vep | 111.0 | Variant annotation |
+| snakemake | 8.5.3 | Workflow management |
 
 ---
 
+## Sample Data
 
-## **10. ROI (Return on Investment)**
+This pipeline was developed and validated using **SRR22317682** (Illumina NovaSeq WES data, GEO accession GSE220768).
 
+Results summary for SRR22317682:
 
-> **Purpose:** How many reads remain after removing duplicates.
+| Metric | Value |
+|--------|-------|
+| Read pairs | 52,928,161 |
+| % duplication | 0.56% |
+| Estimated library size | ~4.7 billion molecules |
+| Covered bases (≥1×) | 60,197,453 |
+| Mean depth | 123× |
 
-
-```bash
-
-awk 'NR==8 {print ($3-$7)/$3}' metrics/SRR22317682.library_complexity.txt
-
-```
-
-## Coverage & Depth Summary
-
-
-| Sample         | Covered Bases (≥1×) | Average Depth |
-
-| -------------- | ------------------- | ------------- |
-
-| **Original**   | 60,197,453          | 123×          |
-
-| **Subsampled** | 58,035,334          | 10.38×        |
-
-
-**Interpretation:**
-
-Subsample retains most target regions; depth matches expected coverage reduction.
-
+> Due to large file sizes (FASTQ, BAM, reference genome), only the pipeline code and documentation are stored in this repository. Raw data is available from NCBI SRA under accession SRR22317682. Output files are available upon request.
 
 ---
 
+## Citation
 
-##  Library Complexity & ROI Summary
+If you use this pipeline, please cite the underlying tools:
 
-
-| Sample         | Read Pairs Examined | Duplicates | % Duplication | Estimated Library Size | ROI    |
-
-| -------------- | ------------------- | ---------- | ------------- | ---------------------- | ------ |
-
-| **Original**   | 52,928,161          | 295,987    | 0.5592%       | 4,714,626,709          | 0.994  |
-
-| **Subsampled** | 4,305,140           | 2,059      | 0.0478%       | 4,499,349,301          | 0.9995 |
-
-
-**Interpretation:**
-
-
-* Both samples show *extremely low duplication* → high library complexity.
-
-* Subsampling preserved the diversity and complexity of the original library.
-
+- **BWA**: Li & Durbin, *Bioinformatics* 2009
+- **GATK**: Van der Auwera et al., *Current Protocols in Bioinformatics* 2013
+- **Picard**: Broad Institute, https://broadinstitute.github.io/picard/
+- **VEP**: McLaren et al., *Genome Biology* 2016
+- **Snakemake**: Mölder et al., *F1000Research* 2021
 
 ---
 
+## License
 
-## Original Picard Complexity Output 
-
-
-### **Original Sample**
-
-
-```
-
-EstimatedLibrarySize = 4714626709
-
-ReadPairsExamined    = 52928161
-
-ReadPairDuplicates   = 295987
-
-PercentDuplication   = 0.005592
-
-```
-
-
-### **Subsampled Sample**
-
-
-```
-
-EstimatedLibrarySize = 4499349301
-
-ReadPairsExamined    = 4305140
-
-ReadPairDuplicates   = 2059
-
-PercentDuplication   = 0.000478
-
-```
-
-## **Summary**
-
-
-* Alignment, coverage, and duplicate processing follow standard WES best practices.
-
-* BED file ensures evaluation strictly on targeted exome regions.
-
-* 10× subsampling is only an example, not a QC standard.
-
-* Real WES quality checks commonly include **10×, 20×, 30×, 50×, 100×** depth summaries.
-
-I am planning to add this in on my Github can you first explain the what is Whole exome analysis, why even we need this 
-
-
-
+MIT License. See `LICENSE` for details.

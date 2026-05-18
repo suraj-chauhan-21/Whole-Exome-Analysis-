@@ -1,0 +1,98 @@
+# =============================================================================
+# WES Pipeline Configuration
+# Edit this file to customise your run. Do NOT hardcode paths in the Snakefile.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Samples
+# List all sample IDs to process. Each ID must match the SRA accession or
+# the prefix of your local FASTQ files (e.g. SRR22317682_1.fastq).
+# -----------------------------------------------------------------------------
+samples:
+  - SRR22317682
+
+# -----------------------------------------------------------------------------
+# Reference genome
+# -----------------------------------------------------------------------------
+reference:
+  accession: "GCF_000001405.40"           # GRCh38.p14
+  fasta: "resources/GRCh38/GRCh38.p14.fa"
+  fai:   "resources/GRCh38/GRCh38.p14.fa.fai"
+  dict:  "resources/GRCh38/GRCh38.p14.dict"
+
+# -----------------------------------------------------------------------------
+# Exome capture BED file
+# Agilent SureSelect Human All Exon V6
+# Download from: https://earray.chem.agilent.com/suredesign/
+# -----------------------------------------------------------------------------
+capture_bed: "resources/beds/Agilent_SureSelect_V6.bed"
+capture_bed_fixed: "resources/beds/Agilent_SureSelect_V6_chr_fixed.bed"
+
+# Chromosome name mapping (NCBI → UCSC style, e.g. NC_000001.11 → chr1)
+chr_map: "resources/beds/chr_map.txt"
+
+# -----------------------------------------------------------------------------
+# Known variant sites for BQSR (download from GATK resource bundle)
+# https://console.cloud.google.com/storage/browser/genomics-public-data/resources/broad/hg38/v0
+# -----------------------------------------------------------------------------
+known_sites:
+  dbsnp:    "resources/known_sites/dbsnp_146.hg38.vcf.gz"
+  mills:    "resources/known_sites/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+  indels:   "resources/known_sites/Homo_sapiens_assembly38.known_indels.vcf.gz"
+
+# -----------------------------------------------------------------------------
+# Tool parameters
+# -----------------------------------------------------------------------------
+threads:
+  bwa:        8
+  samtools:   4
+  fastp:      4
+  gatk:       4
+  fastqc:     2
+
+memory:
+  picard_jvm: "8g"   # Java heap for Picard / GATK, e.g. "8g" or "16g"
+
+fastp:
+  min_length:       36
+  qualified_quality: 20
+  unqualified_pct:  40
+
+gatk:
+  haplotypecaller_mode: "EMIT_VARIANTS_ONLY"   # or EMIT_ALL_CONFIDENT_SITES
+  stand_call_conf:       20
+
+# Hard-filter thresholds (used when VQSR is not applicable, e.g. single sample)
+hard_filter:
+  snp:
+    QD:   2.0
+    MQ:   40.0
+    FS:   60.0
+    SOR:  3.0
+    MQRankSum: -12.5
+    ReadPosRankSum: -8.0
+  indel:
+    QD:   2.0
+    FS:   200.0
+    SOR:  10.0
+    ReadPosRankSum: -20.0
+
+# Downsampling example (fraction passed to samtools view -s)
+# Format: <seed>.<fraction>  e.g. 123.0813 = seed 123, keep 8.13% of reads
+downsample_fraction: "123.0813"
+
+# Coverage depth thresholds to report
+depth_thresholds: [1, 10, 20, 30, 50, 100]
+
+# -----------------------------------------------------------------------------
+# Output directories (relative to working directory)
+# -----------------------------------------------------------------------------
+dirs:
+  data:     "data"
+  aligned:  "results/aligned"
+  qc:       "results/qc"
+  metrics:  "results/metrics"
+  bqsr:     "results/bqsr"
+  variants: "results/variants"
+  annotated: "results/annotated"
+  logs:     "logs"

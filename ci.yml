@@ -1,0 +1,153 @@
+name: WES Pipeline CI
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Triggers: push to main/develop, all pull requests
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 1: Lint – validate config YAML and Snakefile syntax
+  # ───────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-variant: Mambaforge
+          activate-environment: wes-pipeline
+          environment-file: envs/environment.yml
+          use-mamba: true
+          cache-env: true
+
+      - name: Check Snakefile syntax
+        shell: bash -el {0}
+        run: |
+          snakemake --snakefile workflow/Snakefile \
+                    --configfile config/config.yaml \
+                    --lint
+
+      - name: Validate config YAML
+        shell: bash -el {0}
+        run: |
+          python - << 'EOF'
+          import yaml, sys
+          with open("config/config.yaml") as f:
+              cfg = yaml.safe_load(f)
+          required_keys = ["samples","reference","capture_bed_fixed","known_sites",
+                           "threads","memory","gatk","hard_filter","dirs"]
+          missing = [k for k in required_keys if k not in cfg]
+          if missing:
+              print(f"FAIL – missing config keys: {missing}", file=sys.stderr)
+              sys.exit(1)
+          print("config/config.yaml is valid.")
+          EOF
+
+      - name: Lint Python scripts
+        shell: bash -el {0}
+        run: |
+          pip install pyflakes --quiet
+          python -m pyflakes scripts/coverage_summary.py
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 2: Dry-run – check the DAG without executing any rules
+  # ───────────────────────────────────────────────────────────────────────────
+  dry-run:
+    name: Snakemake dry-run
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-variant: Mambaforge
+          activate-environment: wes-pipeline
+          environment-file: envs/environment.yml
+          use-mamba: true
+          cache-env: true
+
+      - name: Run dry-run with test config
+        shell: bash -el {0}
+        run: |
+          snakemake \
+            --snakefile workflow/Snakefile \
+            --configfile test_data/config_test.yaml \
+            --dry-run \
+            --reason \
+            --cores 2
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 3: Integration test – run the pipeline end-to-end on chr20 subset
+  # Note: skipped if test_data/ directory is absent (data must be pre-committed
+  #       or generated in a setup step for full CI runs).
+  # ───────────────────────────────────────────────────────────────────────────
+  integration-test:
+    name: End-to-end test (chr20 subset)
+    runs-on: ubuntu-latest
+    needs: dry-run
+    # Only run on push to main (not on every PR to save compute minutes)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-variant: Mambaforge
+          activate-environment: wes-pipeline
+          environment-file: envs/environment.yml
+          use-mamba: true
+          cache-env: true
+
+      - name: Cache test reference data
+        uses: actions/cache@v4
+        with:
+          path: test_data/ref
+          key: grch38-chr20-ref-v1
+
+      - name: Prepare test data (if not cached)
+        shell: bash -el {0}
+        run: |
+          if [ ! -f test_data/ref/chr20.fa ]; then
+            echo "Downloading chr20 reference..."
+            bash scripts/prepare_test_data.sh
+          else
+            echo "Using cached chr20 reference."
+          fi
+
+      - name: Run pipeline on test data
+        shell: bash -el {0}
+        run: |
+          snakemake \
+            --snakefile workflow/Snakefile \
+            --configfile test_data/config_test.yaml \
+            --cores 2 \
+            --use-conda \
+            --rerun-incomplete
+
+      - name: Verify output checksums
+        shell: bash -el {0}
+        run: |
+          ls -lh test_results/metrics/
+          cat test_results/metrics/test.md5sums.txt
+
+      - name: Upload QC reports as artefacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qc-reports
+          path: |
+            test_results/qc/raw_multiqc/multiqc_report.html
+            test_results/qc/trimmed_multiqc/multiqc_report.html
+          retention-days: 7
